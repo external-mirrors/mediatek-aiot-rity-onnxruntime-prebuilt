@@ -32,6 +32,26 @@ def generate_dummy_inputs(session):
         inputs[input_meta.name] = data
     return inputs
 
+def build_neuron_options(args):
+    neuron_options = {}
+    if args.neuron_flag_use_fp16 is not None:
+        neuron_options["NEURON_FLAG_USE_FP16"] = args.neuron_flag_use_fp16
+    if args.neuron_flag_min_group_size is not None:
+        neuron_options["NEURON_FLAG_MIN_GROUP_SIZE"] = args.neuron_flag_min_group_size
+
+    opt_strings = []
+    if args.neuron_opt:
+        opt_strings.append("--opt=3")
+    if args.neuron_num_mdla:
+        opt_strings.append("--num-mdla=1")
+    if args.neuron_reshape_to_4d:
+        opt_strings.append("--reshape-to-4d")
+    if args.neuron_interval_coloring:
+        opt_strings.append("--interval-coloring-converage=1.0")
+    if opt_strings:
+        neuron_options["NEURON_FLAG_OPTIMIZATION_STRING"] = " ".join(opt_strings)
+    return neuron_options
+
 def benchmark_model(model_path, provider, sess_options, provider_options=None, num_runs=10):
     if provider_options is not None:
         providers = [(provider, provider_options)]
@@ -73,12 +93,21 @@ def main():
     parser.add_argument("--optimize", type=str, default="ENABLE_ALL",
                         choices=["DISABLE_ALL", "ENABLE_BASIC", "ENABLE_EXTENDED", "ENABLE_ALL"],
                         help="Set ONNX Runtime graph optimization level")
-    parser.add_argument("--neuron_flag_use_fp16", type=str, default="1",
-                        help="Set NEURON_FLAG_USE_FP16 for NeuronExecutionProvider")
     parser.add_argument("--execution_provider", type=str, default="CPUExecutionProvider",
-                                                 help="ONNX Runtime execution provider (e.g., CPUExecutionProvider, XnnpackExecutionProvider, NeuronExecutionProvider)")
-    parser.add_argument("--neuron_flag_min_group_size", type=str, default="1",
-                        help="Set NEURON_FLAG_MIN_GROUP_SIZE for NeuronExecutionProvider")
+                        help="ONNX Runtime execution provider (e.g., CPUExecutionProvider, XnnpackExecutionProvider, NeuronExecutionProvider)")
+
+    # Neuron options from batch file
+    parser.add_argument("--neuron_flag_use_fp16", type=str, default="1", help="Set NEURON_FLAG_USE_FP16 for NeuronExecutionProvider")
+    parser.add_argument("--neuron_flag_min_group_size", type=str, default="0", help="Set NEURON_FLAG_MIN_GROUP_SIZE for NeuronExecutionProvider")
+    parser.add_argument("--neuron_opt", action="store_true", default=True,
+                        help="Enable NEURON_FLAG_OPTIMIZATION_STRING|--opt=3 (default: enabled)")
+    parser.add_argument("--neuron_num_mdla", action="store_true", default=True,
+                        help="Enable NEURON_FLAG_OPTIMIZATION_STRING|--num-mdla=1 (default: enabled)")
+    parser.add_argument("--neuron_reshape_to_4d", action="store_true", default=True,
+                        help="Enable NEURON_FLAG_OPTIMIZATION_STRING|--reshape-to-4d (default: enabled)")
+    parser.add_argument("--neuron_interval_coloring", action="store_true", default=True,
+                        help="Enable NEURON_FLAG_OPTIMIZATION_STRING|--interval-coloring-converage=1.0 (default: enabled)")
+
     args = parser.parse_args()
 
     available_providers = ort.get_available_providers()
@@ -111,10 +140,10 @@ def main():
             if args.num_threads is not None:
                 if args.thread_mode == "parallel":
                     sess_options.intra_op_num_threads = args.num_threads
-                    #sess_options.inter_op_num_threads = 1
+                    sess_options.inter_op_num_threads = 1
                 else:
                     sess_options.inter_op_num_threads = args.num_threads
-                    #sess_options.intra_op_num_threads = 1
+                    sess_options.intra_op_num_threads = 1
             # CPU
             if "CPUExecutionProvider" not in available_providers:
                 print("CPUExecutionProvider not available!")
@@ -127,11 +156,7 @@ def main():
                 print("NeuronExecutionProvider not available!")
                 neuron_time = None
             else:
-                neuron_options = {}
-                if args.neuron_flag_use_fp16 is not None:
-                    neuron_options["NEURON_FLAG_USE_FP16"] = args.neuron_flag_use_fp16
-                if args.neuron_flag_min_group_size is not None:
-                    neuron_options["NEURON_FLAG_MIN_GROUP_SIZE"] = args.neuron_flag_min_group_size
+                neuron_options = build_neuron_options(args)
                 neuron_time = benchmark_model(model_path, "NeuronExecutionProvider", sess_options, provider_options=neuron_options, num_runs=args.num_runs)
                 print(f"  NeuronExecutionProvider avg time: {neuron_time*1000:.2f} ms" if neuron_time else "  Failed on Neuron")
             # Speedup
@@ -152,7 +177,7 @@ def main():
             speedup_str = f"{r['speedup']:.2f}x" if r['speedup'] else "N/A"
             print(f"{r['model']:30} {cpu_str:>12} {neuron_str:>14} {speedup_str:>10}")
     else:
-        # Single model mode (as before)
+        # Single model mode
         if not args.model:
             print("Please specify --model <model_path> or use --auto")
             return
@@ -171,11 +196,7 @@ def main():
             sess_options.enable_profiling = True
         sess_options.graph_optimization_level = opt_map[args.optimize]
         if args.execution_provider == "NeuronExecutionProvider":
-            provider_options = {}
-            if args.neuron_flag_use_fp16 is not None:
-                provider_options["NEURON_FLAG_USE_FP16"] = args.neuron_flag_use_fp16
-            if args.neuron_flag_min_group_size is not None:
-                provider_options["NEURON_FLAG_MIN_GROUP_SIZE"] = args.neuron_flag_min_group_size
+            provider_options = build_neuron_options(args)
             providers = [(actual_provider, provider_options)]
         else:
             providers = [actual_provider]
