@@ -28,9 +28,6 @@ else
 	install -d $(LIBDIR)
 	cp -a $(PWD)/ort_wo_ep/usr/lib/* $(LIBDIR)
 	
-	install -d $(BINDIR)
-	cp -a $(PWD)/ort_wo_ep/usr/bin/* $(BINDIR)
-
 	install -d $(DATADIR)
 	install -d $(DATADIR)/onnxruntime_example
 	install $(PWD)/ort_wo_ep/usr/share/onnxruntime_example/* $(DATADIR)/onnxruntime_example
