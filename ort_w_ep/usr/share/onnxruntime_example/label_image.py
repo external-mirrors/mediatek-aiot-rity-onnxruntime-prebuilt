@@ -5,6 +5,7 @@ import math
 import onnxruntime as rt
 import cv2
 import argparse
+import os
 import time
 
 def img_stats(a, name={}):
@@ -53,10 +54,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--image", "-i", default='kitten.jfif', help="path of image to be processed")
     parser.add_argument("--labels", "-l", default='labels_map.txt', help="path to file containing labels")
-    parser.add_argument("--model", "-m", default='/root/onnxruntime_example/efficientnet-lite4.onnx', help="Effecientnet-lite4 model path")
+    parser.add_argument("--model", "-m", default='/usr/share/onnxruntime_example/efficientnet-lite4.onnx', help="Effecientnet-lite4 model path")
     parser.add_argument("--execution_provider", "-e", default='CPUExecutionProvider',
-                        choices=['CPUExecutionProvider', 'XnnpackExecutionProvider', 'NeuronExecutionProvider'],
-                        help="specify onnxruntime execution provider")
+                        choices=['CPUExecutionProvider', 'XnnpackExecutionProvider', 'NeuronExecutionProvider',
+                                 'NeuroPilotExecutionProvider'],
+                        help="onnxruntime execution provider (NeuroPilotExecutionProvider = plugin NPU EP, "
+                             "NeuronExecutionProvider = legacy in-tree NPU EP on ORT 1.20)")
+    parser.add_argument("--ep-lib", default=os.environ.get("NEURON_EP_LIB", "/usr/lib/libonnxruntime_providers_neuropilot.so"),
+                        help="plugin EP shared library (NeuroPilotExecutionProvider only)")
     parser.add_argument("--profiling", "-p", type=int, default=0, help="1 to enable model profiling, default is 0")
     parser.add_argument("--neuron_flag_use_fp16", type=str, default=None, help="Set NEURON_FLAG_USE_FP16 for NeuronExecutionProvider")
     parser.add_argument("--neuron_flag_min_group_size", type=str, default=None, help="Set NEURON_FLAG_MIN_GROUP_SIZE for NeuronExecutionProvider")
@@ -78,20 +83,26 @@ if __name__ == "__main__":
     # create a batch of 1 (that batch size is baked into the saved_model)
     img_batch = np.expand_dims(img, axis=0)
 
-    # Build providers list
-    providers = []
-    if args.execution_provider == "NeuronExecutionProvider":
-        provider_options = {}
-        if args.neuron_flag_use_fp16 is not None:
-            provider_options["NEURON_FLAG_USE_FP16"] = args.neuron_flag_use_fp16
-        if args.neuron_flag_min_group_size is not None:
-            provider_options["NEURON_FLAG_MIN_GROUP_SIZE"] = args.neuron_flag_min_group_size
-        providers = [("NeuronExecutionProvider", provider_options)]
-    else:
-        providers = [args.execution_provider]
+    # Build provider options
+    provider_options = {"NEURON_FLAG_USE_FP16": "1"}
+    if args.neuron_flag_use_fp16 is not None:
+        provider_options["NEURON_FLAG_USE_FP16"] = args.neuron_flag_use_fp16
+    if args.neuron_flag_min_group_size is not None:
+        provider_options["NEURON_FLAG_MIN_GROUP_SIZE"] = args.neuron_flag_min_group_size
 
-    # load the model
-    sess = rt.InferenceSession(args.model, providers=providers)
+    so = rt.SessionOptions()
+    if args.execution_provider == "NeuroPilotExecutionProvider":
+        # Plugin EP (ORT >= 1.23): register the library, then select its device(s).
+        rt.register_execution_provider_library("neuropilot", args.ep_lib)
+        devices = [d for d in rt.get_ep_devices() if d.ep_name == "NeuroPilotExecutionProvider"]
+        if not devices:
+            raise SystemExit("NeuroPilotExecutionProvider not available (check --ep-lib and libneuron_op_capability.so)")
+        so.add_provider_for_devices(devices, provider_options)
+        sess = rt.InferenceSession(args.model, so)
+    elif args.execution_provider == "NeuronExecutionProvider":
+        sess = rt.InferenceSession(args.model, so, providers=[("NeuronExecutionProvider", provider_options), "CPUExecutionProvider"])
+    else:
+        sess = rt.InferenceSession(args.model, so, providers=[args.execution_provider])
     input_name = sess.get_inputs()[0].name
 
     # run inference and print results

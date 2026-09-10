@@ -1,0 +1,107 @@
+# Provenance manifest for this onnxruntime-prebuilt release.
+# Every binary in ort_w_ep/ and ort_wo_ep/ can be rebuilt from exactly these inputs.
+# Installed on the target as /usr/share/onnxruntime-prebuilt/BUILD-INFO.yaml.
+
+release:
+  onnxruntime_prebuilt_branch: v1.26.0
+  onnxruntime_prebuilt_tag: v1.26.0-ep0.1.0        # <ORT version>-ep<EP release>
+  onnxruntime_version: 1.26.0
+  ep_release: 0.1.0                                 # semver of the EP + op-capability pair (lockstep); first internal release
+  ep_release_tag: plugin-ep-neuropilot/v0.1.0       # tag to create in the internal mirrors of both EP repos at the commits below
+  built_on: 2026-09-10
+  target: aarch64-linux-gnu (Genio scarthgap: glibc 2.39, libstdc++ from GCC 13, Python 3.12)
+  previous_release: v1.20.2 @ 92b63b9eb0d5878fd806ffbbf055a4d57ce20111
+
+sources:
+  onnxruntime:
+    url: https://github.com/microsoft/onnxruntime.git
+    tag: v1.26.0
+    commit: 8c546c37b43caaca1fa25db430dab94b901cf277
+    submodules:
+      cmake/external/onnx: be2b5fde82d9c8874f3d19328bdfe3b6962dc67b   # v1.21.0
+      cmake/external/emsdk: c0bb220cb6e6f4e0fabb6f6db9efd53390ef5e56   # 4.0.23 (unused on Linux)
+      cmake/external/libprotobuf-mutator: 7a2ed51a6b682a83e345ff49fc4cfd7ca47550db   # unused
+    other_deps: cmake/deps.txt of the tag (FetchContent, pinned by hash there)
+  onnxruntime_ep_neuropilot:
+    url: https://gitlab.collabora.com/mediatek/private/onnxruntime-ep-neuropilot.git
+    branch: mdla-correctness-fixes
+    commit: cd5e9f67393f3aefcfc4d1d5fd9ece4216d2f579
+    release_tag: plugin-ep-neuropilot/v0.1.0        # internal mirror tag pinning this commit
+    merge_base_with_main: 398fb85d9a757298e12a9fed7a4ea62ab0112c8b   # main @ 2026-09-03
+    commits_over_main:
+      - dad78fdb6847baffc0c605fc68ea81e9e206af62  Claim QDQ yolo nodes and keep quantized graphs in one partition.
+      - 19e4375e8c5957d70ed38dec588bcecf2710addf  Fall back to initializer dims when GetShape finds no value_info.
+      - 25584855396b66295d86bd3d8a03dbd0f28b21e8  Treat declared rank-0 graph inputs as static shapes.
+      - b81d9a77cce887116b3bd1d6e62618b5cc02e509  Lower constant-B MatMul as FULLY_CONNECTED instead of BATCH_MATMUL.
+      - dfb568bea8219bf75db2bb50cecba53d7a86ff8b  Materialise the epsilon column in SkipSimplifiedLayerNorm.
+      - cd5e9f67393f3aefcfc4d1d5fd9ece4216d2f579  Decline nodes whose activation dimensions exceed MDLA's 65535 limit.
+    why_not_main: >
+      main (398fb85) fails on QDQ int8 graphs on Genio 720 (NEURON_BAD_DATA, graph split into 15 partitions);
+      dad78fd is required to claim QDQ YOLO graphs as one partition. Validated on hardware 2026-09-10.
+    local_patches: none
+    ort_headers_used: onnxruntime v1.26.0 (ORT_API_VERSION 26; EP negotiates down to 23)
+    fetched_deps: {protobuf: v21.12, onnx: e709452ef2bbc1d113faf678c24e6d3467696e83 (v1.18.0), GSL: v4.0.0}
+  libneuron_op_capability:
+    url: https://gitlab.collabora.com/mediatek/private/libneuron-op-capability.git
+    branch: yolo-int8
+    commit: 9f42ddc7363714fd3ba3a8c89bb01977cfabc787
+    release_tag: plugin-ep-neuropilot/v0.1.0        # same number as the EP (lockstep pair)
+    merge_base_with_main: 9585d441c396fbeb843bbd8d822832bf08f4e092
+    note: main (f37b4a3) only adds CI files (.gitlab-ci.yml) on top of the merge base; no source difference.
+    commits_over_main:
+      - 9f42ddc7363714fd3ba3a8c89bb01977cfabc787  Register QuantizeLinear/DequantizeLinear op capabilities.
+    local_patches: none
+    fetched_deps: {protobuf: v21.12, onnx: e709452ef2bbc1d113faf678c24e6d3467696e83 (v1.18.0), GSL: v4.0.0}
+    built_with_ep_source: same onnxruntime-ep-neuropilot commit as above (NEURON_EP_SRC_DIR)
+  runtime_requirements:
+    neuropilot_runtime: ">= 8.2.16"   # libneuronusdk_adapter.mtk.so, dlopen()ed by the EP
+    neuropilot_prebuilts_validated: https://gitlab.com/mediatek/aiot/rity/mtk-neuropilot-prebuilts.git scarthgap @ cebcdf5ecc7982606eee61799bfae4e468aea8d7 (neuron/8, 8.2.16)
+  tooling_in_this_repo:
+    onnxruntime_benchmark.py: rewritten for this release (Yocto_onnxruntime/build/tools)
+    label_image.py: previous release + NeuroPilotExecutionProvider option
+
+build_environment:
+  host: Apple Silicon macOS, Colima aarch64 VM, Docker; native aarch64 build (no cross toolchain)
+  image: ort-build:ubuntu24.04 built from build-scripts/docker/Dockerfile
+  base_image: ubuntu@sha256:224a1869083a311ef3f13648a154ba79832fbef6364d31493642ca03082da254   # ubuntu:24.04 (24.04.4 LTS)
+  gcc: 13.3.0 (Ubuntu 13.3.0-6ubuntu2~24.04.1)
+  glibc: 2.39 (Ubuntu GLIBC 2.39-0ubuntu8.8)
+  cmake: 3.28.3
+  ninja: 1.11.1
+  python: 3.12.3
+  numpy: 1.26.4
+  protoc: 3.21.12
+  scripts: build-scripts/build_ort_in_container.sh, build-scripts/build_ep_in_container.sh, build-scripts/assemble_prebuilt.sh
+
+build_configuration:
+  onnxruntime:
+    command: >
+      python3 tools/ci_build/build.py --build_dir build/Linux --config Release --parallel 6 --skip_tests
+      --skip_submodule_sync --allow_running_as_root --build_shared_lib --build_wheel --use_xnnpack
+      --compile_no_warning_as_error --cmake_extra_defines CMAKE_INSTALL_PREFIX=/usr onnxruntime_BUILD_UNIT_TESTS=OFF
+    perf_test: cmake -Donnxruntime_BUILD_UNIT_TESTS=ON . && cmake --build . --target onnxruntime_perf_test
+    execution_providers: [CPU, XNNPACK]   # NPU is the out-of-tree plugin EP below
+  libneuron_op_capability:
+    command: cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DNEURON_EP_SRC_DIR=<ep>/src/neuron_plugin_ep
+  onnxruntime_ep_neuropilot:
+    command: >
+      cmake -G Ninja -DCMAKE_BUILD_TYPE=Release
+      -DORT_INCLUDE_DIR=<onnxruntime>/include/onnxruntime/core/session
+      -DNEURON_OP_CAPABILITY_LIB_DIR=<dir with libneuron_op_capability.so>
+
+artifacts_sha256:
+  ort_w_ep/usr/lib/libonnxruntime.so.1.26.0: af3184a9da0f6f128ddfd39d76201da6e8f04e17f234c09cd24899b9e737039c
+  ort_w_ep/usr/lib/libonnxruntime_providers_shared.so: ec5466a571b44718e64b7e62605b7a87045df08bbaa2b7d67804208f22ab32d2
+  ort_w_ep/usr/lib/libonnxruntime_providers_neuropilot.so: 8af654c544a3f622af42360be0799951952c80acee07dd1541c907580e5686e0
+  ort_w_ep/usr/lib/libneuron_op_capability.so: 5262030776faf062d4e49ea53771e6e8c3b1d5eac4634885457719a925c50208
+  ort_w_ep/usr/lib/python3.12/site-packages/onnxruntime/capi/onnxruntime_pybind11_state.so: 93f716f224f0b41e4c459bbb2e8ffc3c23e41e1c12fd1bd11fe71108349876a4
+  ort_w_ep/usr/share/onnxruntime_benchmark/onnxruntime_perf_test: 033034dee9377a3ef2408bf073a40d6a1a0f68f22050f4bcc38f875e99583cbc
+  wheel_onnxruntime-1.26.0-cp312-cp312-linux_aarch64.whl: c0ed8e1f925c047bf1a0b88d8ba9c5e0b7bdc3b86edd09e1e07e93f1dbab26d3
+  note: ort_wo_ep/ shares the same ORT binaries (byte-identical); it only omits the two EP libraries.
+
+validation:
+  board: Genio 720 EVK UFS, rity-demo 26.0-dev scarthgap, kernel 6.6.137-mtk, NeuroPilot 8.2.16
+  date: 2026-09-10
+  reference_model: yolo11s_480_int8.onnx (ml-test-models) with inputs/bus_480.npy
+  expected: partitions=1 claimed 1054/1056, NPU p50 ~8 ms, cosine vs CPU 0.9999, cosine vs FP32 0.9998, 5/5 detections
+  results_files: Yocto_onnxruntime/deliverables/results-genio720-ort1.26.0-*.json

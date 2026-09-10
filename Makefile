@@ -21,6 +21,9 @@ ifeq ($(ORT_EP),1)
 	install -d $(DATADIR)/onnxruntime_benchmark
 	install $(PWD)/ort_w_ep/usr/share/onnxruntime_example/* $(DATADIR)/onnxruntime_example
 	install $(PWD)/ort_w_ep/usr/share/onnxruntime_benchmark/* $(DATADIR)/onnxruntime_benchmark
+
+	install -d $(DATADIR)/onnxruntime-prebuilt
+	install -m 0644 $(PWD)/BUILD-INFO.yaml $(DATADIR)/onnxruntime-prebuilt/BUILD-INFO.yaml
 else
 	install -d $(INCLUDEDIR)
 	cp -a ${PWD}/ort_wo_ep/usr/include/* $(INCLUDEDIR)
@@ -31,4 +34,7 @@ else
 	install -d $(DATADIR)
 	install -d $(DATADIR)/onnxruntime_example
 	install $(PWD)/ort_wo_ep/usr/share/onnxruntime_example/* $(DATADIR)/onnxruntime_example
+
+	install -d $(DATADIR)/onnxruntime-prebuilt
+	install -m 0644 $(PWD)/BUILD-INFO.yaml $(DATADIR)/onnxruntime-prebuilt/BUILD-INFO.yaml
 endif
