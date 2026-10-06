@@ -4,13 +4,13 @@
 
 release:
   onnxruntime_prebuilt_branch: v1.26.0
-  onnxruntime_prebuilt_tag: v1.26.0-ep0.1.0        # <ORT version>-ep<EP release>
+  onnxruntime_prebuilt_tag: v1.26.0-ep0.2.0        # <ORT version>-ep<EP release>
   onnxruntime_version: 1.26.0
-  ep_release: 0.1.0                                 # semver of the EP + op-capability pair (lockstep); first internal release
-  ep_release_tag: plugin-ep-neuropilot/v0.1.0       # tag to create in the internal mirrors of both EP repos at the commits below
-  built_on: 2026-09-10
+  ep_release: 0.2.0                                 # semver of the EP + op-capability pair (lockstep)
+  ep_release_tag: plugin-ep-neuropilot/v0.2.0       # tag to create in the internal mirrors of both EP repos at the commits below
+  built_on: 2026-10-02
   target: aarch64-linux-gnu (Genio scarthgap: glibc 2.39, libstdc++ from GCC 13, Python 3.12)
-  previous_release: v1.20.2 @ 92b63b9eb0d5878fd806ffbbf055a4d57ce20111
+  previous_release: v1.26.0-ep0.1.0 @ e3c0f1c810aa1ca26fc6fd747d8435e50776435c
 
 sources:
   onnxruntime:
@@ -24,38 +24,45 @@ sources:
     other_deps: cmake/deps.txt of the tag (FetchContent, pinned by hash there)
   onnxruntime_ep_neuropilot:
     url: https://gitlab.collabora.com/mediatek/private/onnxruntime-ep-neuropilot.git
-    branch: mdla-correctness-fixes
-    commit: cd5e9f67393f3aefcfc4d1d5fd9ece4216d2f579
-    release_tag: plugin-ep-neuropilot/v0.1.0        # internal mirror tag pinning this commit
-    merge_base_with_main: 398fb85d9a757298e12a9fed7a4ea62ab0112c8b   # main @ 2026-09-03
-    commits_over_main:
-      - dad78fdb6847baffc0c605fc68ea81e9e206af62  Claim QDQ yolo nodes and keep quantized graphs in one partition.
-      - 19e4375e8c5957d70ed38dec588bcecf2710addf  Fall back to initializer dims when GetShape finds no value_info.
-      - 25584855396b66295d86bd3d8a03dbd0f28b21e8  Treat declared rank-0 graph inputs as static shapes.
-      - b81d9a77cce887116b3bd1d6e62618b5cc02e509  Lower constant-B MatMul as FULLY_CONNECTED instead of BATCH_MATMUL.
-      - dfb568bea8219bf75db2bb50cecba53d7a86ff8b  Materialise the epsilon column in SkipSimplifiedLayerNorm.
-      - cd5e9f67393f3aefcfc4d1d5fd9ece4216d2f579  Decline nodes whose activation dimensions exceed MDLA's 65535 limit.
-    why_not_main: >
-      main (398fb85) fails on QDQ int8 graphs on Genio 720 (NEURON_BAD_DATA, graph split into 15 partitions);
-      dad78fd is required to claim QDQ YOLO graphs as one partition. Validated on hardware 2026-09-10.
-    local_patches: none
+    branch: gridsample-mtkext (continues mdla-correctness-fixes)
+    base_commit: cd5e9f67393f3aefcfc4d1d5fd9ece4216d2f579   # mdla-correctness-fixes tip the v0.1.0 release shipped
+    release_tag: plugin-ep-neuropilot/v0.2.0        # internal mirror tag pinning this commit
+    local_patches:
+      # Applied on top of base_commit (cd5e9f67), per-patch commit SHAs below. GridSample
+      # is the primary fix (gp5100_npu/mvpu_info/gridsample/0001-*.patch); 0002-0006 are
+      # EP robustness fixes found and validated along the way (see gridsample-5100-
+      # candidate-1004/README.md v4-v6 and gp5100_npu/mvpu_info/EP_GridSample_bug_report.md).
+      - 0516b21115d7e610836d97a8e581aa6b802da2e7  GridSample: lower via MTKEXT extension on NeuroPilot < 9 and confirm runtime support before claiming.
+      - 338a8dc6559fc04b6931e267631cc77d4fcf3107  GridSample: add NEURON_FLAG_GRIDSAMPLE_ABS_GRID to pre-normalize the grid.
+      - 691740fd36be27deb7985f99f8b5c5b1734fcb16  Reduction: take axes from input[1] when present instead of the axes attribute.
+      - 03df8683dd2f291eed1caafda86ced92523468ea  Squeeze/Unsqueeze: read axes initializers stored in raw_data.
+      - 4d105d37ad38622d70363aa4c7a490065e37a879  InstanceNormalization/BatchNormalization: recognise optional inputs correctly.
+      - ded7c399429b9d58d165b00fb647249aa7cbc512  Add NEURON_FLAG_MAX_PARTITION_NODES to cap the node count per partition.
+    # NOTE: this repo has no network path to gitlab.collabora.com from the dev host that
+    # produced this update, so base_commit/local_patches above could not be independently
+    # re-verified against the live repo (per VERSIONING-style convention elsewhere in this
+    # org: honest gap, not a guess). Confirmed by the engineer who built/validated this
+    # release that it continues mdla-correctness-fixes @ cd5e9f67 (not Collabora main) --
+    # earlier project notes (gp5100_npu/mvpu_info/neuron-build-dev-notes.md) said "main
+    # fc79119", which was wrong; fix that doc too.
     ort_headers_used: onnxruntime v1.26.0 (ORT_API_VERSION 26; EP negotiates down to 23)
     fetched_deps: {protobuf: v21.12, onnx: e709452ef2bbc1d113faf678c24e6d3467696e83 (v1.18.0), GSL: v4.0.0}
   libneuron_op_capability:
     url: https://gitlab.collabora.com/mediatek/private/libneuron-op-capability.git
-    branch: yolo-int8
-    commit: 9f42ddc7363714fd3ba3a8c89bb01977cfabc787
-    release_tag: plugin-ep-neuropilot/v0.1.0        # same number as the EP (lockstep pair)
-    merge_base_with_main: 9585d441c396fbeb843bbd8d822832bf08f4e092
-    note: main (f37b4a3) only adds CI files (.gitlab-ci.yml) on top of the merge base; no source difference.
-    commits_over_main:
-      - 9f42ddc7363714fd3ba3a8c89bb01977cfabc787  Register QuantizeLinear/DequantizeLinear op capabilities.
+    branch: yolo-int8 (merged to main @ 48df2e4 per this build)
+    commit: 48df2e4   # NOTE: short ref from gp5100_npu/mvpu_info/neuron-build-dev-notes.md,
+                       # not independently re-verified (no repo access from this host).
+    release_tag: plugin-ep-neuropilot/v0.2.0        # same number as the EP (lockstep pair)
+    note: >
+      No source change from the v0.1.0 release (yolo-int8 @ 9f42ddc, same
+      QuantizeLinear/DequantizeLinear registrations); rebuilt alongside the new EP.
+      Binary differs (new sha256) because of that rebuild, not a logic change.
     local_patches: none
     fetched_deps: {protobuf: v21.12, onnx: e709452ef2bbc1d113faf678c24e6d3467696e83 (v1.18.0), GSL: v4.0.0}
     built_with_ep_source: same onnxruntime-ep-neuropilot commit as above (NEURON_EP_SRC_DIR)
   runtime_requirements:
     neuropilot_runtime: ">= 8.2.16"   # libneuronusdk_adapter.mtk.so, dlopen()ed by the EP
-    neuropilot_prebuilts_validated: https://gitlab.com/mediatek/aiot/rity/mtk-neuropilot-prebuilts.git scarthgap @ cebcdf5ecc7982606eee61799bfae4e468aea8d7 (neuron/8, 8.2.16)
+    neuropilot_prebuilts_validated: https://gitlab.com/mediatek/aiot/rity/mtk-neuropilot-prebuilts.git scarthgap @ d2f5bf8efb5dd550af8d303e7b773df3e1cc45b9 (neuron/8 + mvpu/25, GridSample-on-MVPU fix)
   tooling_in_this_repo:
     onnxruntime_benchmark.py: rewritten for this release (Yocto_onnxruntime/build/tools)
     label_image.py: previous release + NeuroPilotExecutionProvider option
@@ -92,16 +99,25 @@ build_configuration:
 artifacts_sha256:
   ort_w_ep/usr/lib/libonnxruntime.so.1.26.0: af3184a9da0f6f128ddfd39d76201da6e8f04e17f234c09cd24899b9e737039c
   ort_w_ep/usr/lib/libonnxruntime_providers_shared.so: ec5466a571b44718e64b7e62605b7a87045df08bbaa2b7d67804208f22ab32d2
-  ort_w_ep/usr/lib/libonnxruntime_providers_neuropilot.so: 8af654c544a3f622af42360be0799951952c80acee07dd1541c907580e5686e0
-  ort_w_ep/usr/lib/libneuron_op_capability.so: 5262030776faf062d4e49ea53771e6e8c3b1d5eac4634885457719a925c50208
+  ort_w_ep/usr/lib/libonnxruntime_providers_neuropilot.so: 815e2bd5ababc501c603210fd5f548dc1dcfa071a58efa0c589045c094d51f62
+  ort_w_ep/usr/lib/libneuron_op_capability.so: fbb9ee12960f6c8c2418639512918da886455e8d85f6e89eb5ffa10126e2e019
   ort_w_ep/usr/lib/python3.12/site-packages/onnxruntime/capi/onnxruntime_pybind11_state.so: 93f716f224f0b41e4c459bbb2e8ffc3c23e41e1c12fd1bd11fe71108349876a4
   ort_w_ep/usr/share/onnxruntime_benchmark/onnxruntime_perf_test: 033034dee9377a3ef2408bf073a40d6a1a0f68f22050f4bcc38f875e99583cbc
   wheel_onnxruntime-1.26.0-cp312-cp312-linux_aarch64.whl: c0ed8e1f925c047bf1a0b88d8ba9c5e0b7bdc3b86edd09e1e07e93f1dbab26d3
   note: ort_wo_ep/ shares the same ORT binaries (byte-identical); it only omits the two EP libraries.
 
 validation:
-  board: Genio 720 EVK UFS, rity-demo 26.0-dev scarthgap, kernel 6.6.137-mtk, NeuroPilot 8.2.16
-  date: 2026-09-10
-  reference_model: yolo11s_480_int8.onnx (ml-test-models) with inputs/bus_480.npy
-  expected: partitions=1 claimed 1054/1056, NPU p50 ~8 ms, cosine vs CPU 0.9999, cosine vs FP32 0.9998, 5/5 detections
-  results_files: Yocto_onnxruntime/deliverables/results-genio720-ort1.26.0-*.json
+  - board: Genio 720 EVK UFS, rity-demo 26.0-dev scarthgap, kernel 6.6.137-mtk, NeuroPilot 8.2.16
+    date: 2026-09-10
+    reference_model: yolo11s_480_int8.onnx (ml-test-models) with inputs/bus_480.npy
+    expected: partitions=1 claimed 1054/1056, NPU p50 ~8 ms, cosine vs CPU 0.9999, cosine vs FP32 0.9998, 5/5 detections
+    results_files: Yocto_onnxruntime/deliverables/results-genio720-ort1.26.0-*.json
+    note: carried from v0.1.0; not re-run for v0.2.0, nothing here touches YOLO/QDQ paths.
+  - board: Genio Pro 5100 EVK (MT8894/MVPU2.5), candidate test (LD_LIBRARY_PATH override, no reflash)
+    date: 2026-10-02
+    scope: GridSample on MVPU (v6) -- 18-shape sweep, 2 EP models, IGEV-RT regression, softmax/tanh regression
+    expected: cos 0.994-0.99999 across the sweep; IGEV-RT 47.7 ms cosine 1.00000; unsupported combos
+      (nearest/border/reflection) report unsupported at compile instead of silent garbage output
+    known_residual: fp16 absolute-coord grid loses precision for H/W >= 200 (cos 0.997 @ 200px, 0.994 @ 300px)
+    results_files: gp5100_npu/mvpu_info/gridsample-5100-candidate-1004/README.md (v6 section),
+      gp5100_npu/mvpu_info/neuron-build-dev-notes.md
