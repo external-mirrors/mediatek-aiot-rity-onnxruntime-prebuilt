@@ -4,10 +4,22 @@
 
 release:
   onnxruntime_prebuilt_branch: v1.26.0
-  onnxruntime_prebuilt_tag: v1.26.0-ep0.2.0        # <ORT version>-ep<EP release>
+  onnxruntime_prebuilt_tag: v1.26.0-ep0.2.1        # <ORT version>-ep<EP release>
   onnxruntime_version: 1.26.0
-  ep_release: 0.2.0                                 # semver of the EP + op-capability pair (lockstep)
-  ep_release_tag: plugin-ep-neuropilot/v0.2.0       # tag to create in the internal mirrors of both EP repos at the commits below
+  ep_release: 0.2.1                                 # semver of the EP + op-capability pair (lockstep)
+  ep_release_tag: plugin-ep-neuropilot/v0.2.1       # tag to create in the internal mirrors of both EP repos at the commits below
+  supersedes: v1.26.0-ep0.2.0
+  reason_for_0.2.1: >
+    v0.2.0 shipped the WRONG EP artifacts.  Its sources: section lists local_patches
+    0001-0006, but the two binaries it packaged are the 2026-09-29 handover build that
+    carries patch 0001 only (sha256 815e2bd5... / fbb9ee12..., i.e. the libs/ directory of
+    the gridsample deliverable, which is also what MTK's candidate tars carry).  The
+    mismatch is provable from v0.2.0's own artifacts_sha256 block.  Consequence on a board:
+    the reduction/Unsqueeze fixes (0003/0004) and the InstanceNorm/BatchNorm op-capability
+    fix are absent, so e.g. RT-DETRv4 loses its three large decoder partitions to
+    "Empty axes for reduction operation" and claims 422 of 1094 nodes instead of 1085.
+    v0.2.1 is the same source as v0.2.0 claimed, correctly built and packaged; no source
+    change beyond the op-capability branch correction noted below.
   built_on: 2026-10-02
   target: aarch64-linux-gnu (Genio scarthgap: glibc 2.39, libstdc++ from GCC 13, Python 3.12)
   previous_release: v1.26.0-ep0.1.0 @ e3c0f1c810aa1ca26fc6fd747d8435e50776435c
@@ -26,7 +38,8 @@ sources:
     url: https://gitlab.collabora.com/mediatek/private/onnxruntime-ep-neuropilot.git
     branch: gridsample-mtkext (continues mdla-correctness-fixes)
     base_commit: cd5e9f67393f3aefcfc4d1d5fd9ece4216d2f579   # mdla-correctness-fixes tip the v0.1.0 release shipped
-    release_tag: plugin-ep-neuropilot/v0.2.0        # internal mirror tag pinning this commit
+    release_tag: plugin-ep-neuropilot/v0.2.1        # internal mirror tag pinning this commit
+    head_commit: ded7c399429b9d58d165b00fb647249aa7cbc512   # == last local patch below; this is what v0.2.1 ships
     local_patches:
       # Applied on top of base_commit (cd5e9f67), per-patch commit SHAs below. GridSample
       # is the primary fix (gp5100_npu/mvpu_info/gridsample/0001-*.patch); 0002-0006 are
@@ -49,15 +62,15 @@ sources:
     fetched_deps: {protobuf: v21.12, onnx: e709452ef2bbc1d113faf678c24e6d3467696e83 (v1.18.0), GSL: v4.0.0}
   libneuron_op_capability:
     url: https://gitlab.collabora.com/mediatek/private/libneuron-op-capability.git
-    branch: yolo-int8 (merged to main @ 48df2e4 per this build)
-    commit: 48df2e4   # NOTE: short ref from gp5100_npu/mvpu_info/neuron-build-dev-notes.md,
-                       # not independently re-verified (no repo access from this host).
-    release_tag: plugin-ep-neuropilot/v0.2.0        # same number as the EP (lockstep pair)
+    branch: instancenorm-nhwc   # branched from main @ 48df2e4
+    commit: e32c71141b7107e94b6061c92ebfea8d24df9d73
+    release_tag: plugin-ep-neuropilot/v0.2.1        # same number as the EP (lockstep pair)
     note: >
-      No source change from the v0.1.0 release (yolo-int8 @ 9f42ddc, same
-      QuantizeLinear/DequantizeLinear registrations); rebuilt alongside the new EP.
-      Binary differs (new sha256) because of that rebuild, not a logic change.
-    local_patches: none
+      v0.2.0's entry claimed "no source change from v0.1.0".  That is no longer true and was
+      not true for the patch set v0.2.0 advertised: the InstanceNormalization/BatchNormalization
+      layout fix lives in op-capability, not in the EP, and is required by EP patch 0005.
+    local_patches:
+      - e32c71141b7107e94b6061c92ebfea8d24df9d73  InstanceNormalization/BatchNormalization: claim NCHW nodes (ORT converts them to NHWC after GetCapability); IsNodeLayoutNHWC checks NodeProto::domain.
     fetched_deps: {protobuf: v21.12, onnx: e709452ef2bbc1d113faf678c24e6d3467696e83 (v1.18.0), GSL: v4.0.0}
     built_with_ep_source: same onnxruntime-ep-neuropilot commit as above (NEURON_EP_SRC_DIR)
   runtime_requirements:
@@ -99,8 +112,8 @@ build_configuration:
 artifacts_sha256:
   ort_w_ep/usr/lib/libonnxruntime.so.1.26.0: af3184a9da0f6f128ddfd39d76201da6e8f04e17f234c09cd24899b9e737039c
   ort_w_ep/usr/lib/libonnxruntime_providers_shared.so: ec5466a571b44718e64b7e62605b7a87045df08bbaa2b7d67804208f22ab32d2
-  ort_w_ep/usr/lib/libonnxruntime_providers_neuropilot.so: 815e2bd5ababc501c603210fd5f548dc1dcfa071a58efa0c589045c094d51f62
-  ort_w_ep/usr/lib/libneuron_op_capability.so: fbb9ee12960f6c8c2418639512918da886455e8d85f6e89eb5ffa10126e2e019
+  ort_w_ep/usr/lib/libonnxruntime_providers_neuropilot.so: 9e384517faee3bf5525383d37e2fa0d215b6c480ad7876b1632676f9182256d3
+  ort_w_ep/usr/lib/libneuron_op_capability.so: c3c9ef5aabf559e822504370a59ff6e16aadbbc2811aff71817b5664f4d82df8
   ort_w_ep/usr/lib/python3.12/site-packages/onnxruntime/capi/onnxruntime_pybind11_state.so: 93f716f224f0b41e4c459bbb2e8ffc3c23e41e1c12fd1bd11fe71108349876a4
   ort_w_ep/usr/share/onnxruntime_benchmark/onnxruntime_perf_test: 033034dee9377a3ef2408bf073a40d6a1a0f68f22050f4bcc38f875e99583cbc
   wheel_onnxruntime-1.26.0-cp312-cp312-linux_aarch64.whl: c0ed8e1f925c047bf1a0b88d8ba9c5e0b7bdc3b86edd09e1e07e93f1dbab26d3
@@ -121,3 +134,10 @@ validation:
     known_residual: fp16 absolute-coord grid loses precision for H/W >= 200 (cos 0.997 @ 200px, 0.994 @ 300px)
     results_files: gp5100_npu/mvpu_info/gridsample-5100-candidate-1004/README.md (v6 section),
       gp5100_npu/mvpu_info/neuron-build-dev-notes.md
+
+release_gate:
+  # v0.2.0 shipped unverified artifacts; from v0.2.1 on, check the binaries actually carry
+  # the advertised patches BEFORE tagging.  Both commands must print a non-zero count.
+  - strings ort_w_ep/usr/lib/libonnxruntime_providers_neuropilot.so | grep -c NEURON_FLAG_MAX_PARTITION_NODES   # EP patch 0006
+  - strings ort_w_ep/usr/lib/libneuron_op_capability.so            | grep -c "NEURON_FLAG_USE_NCHW set"         # op-cap patch
+  - sha256sum -c SHA256SUMS
